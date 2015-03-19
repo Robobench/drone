@@ -13,8 +13,8 @@ import (
 	"github.com/drone/drone/shared/build/buildfile"
 	"github.com/drone/drone/shared/build/docker"
 	"github.com/drone/drone/shared/build/dockerfile"
-	"github.com/drone/drone/shared/build/log"
 	"github.com/drone/drone/shared/build/proxy"
+	"github.com/drone/drone/shared/build/log"
 	"github.com/drone/drone/shared/build/repo"
 	"github.com/drone/drone/shared/build/script"
 )
@@ -388,6 +388,17 @@ func (b *Builder) run() error {
 		log.Infof("mounting volume %s:%s", hostpath, volume)
 	}
 
+  // FIXME jweisz - It would be great if there were some less intrusive way to
+	// pass in the subuser directory automagically.
+  // Add subuser paths
+	conf.Volumes["/tmp/.X11-unix"] = struct {}{}
+  conf.Env = append(conf.Env, "DISPLAY=unix:0")
+	host.Binds = append(host.Binds, "/tmp/.X11-unix:/tmp/.X11-unix")
+
+	conf.Volumes["/tmp/.docker.xauth"] = struct {}{}
+	conf.Env=append(conf.Env, "XAUTHORITY=/tmp/.docker.xauth")
+	host.Binds = append(host.Binds, "/tmp/.docker.xauth:/tmp/.docker.xauth")
+
 	// create the container from the image
 	run, err := b.dockerClient.Containers.Create(&conf)
 	if err != nil {
@@ -495,6 +506,8 @@ func (b *Builder) writeBuildScript(dir string) error {
 	f.WriteEnv("CI_REMOTE", b.Repo.Path)
 	f.WriteEnv("CI_BRANCH", b.Repo.Branch)
 	f.WriteEnv("CI_PULL_REQUEST", b.Repo.PR)
+	f.WriteEnv("XAUTHORITY","/tmp/.docker.xauth")
+	f.WriteEnv("DISPLAY","unix:0")
 
 	// add /etc/hosts entries
 	for _, mapping := range b.Build.Hosts {
@@ -513,6 +526,9 @@ func (b *Builder) writeBuildScript(dir string) error {
 			f.WriteCmd(cmd)
 		}
 	}
+
+	//FIXME jweisz find some less intrusive way to do this
+  //f.WriteCmd("sudo bash /subuser/install_client_gpu.bash")
 
 	// if the commit is for merging a pull request
 	// we should only execute the build commands,
